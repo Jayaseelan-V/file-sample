@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow
+		name="file-listener"
+		doc:id="c94fef20-3980-4cad-bd0c-f78e94770767">
+		<file:listener
+			doc:name="On New or Updated File"
+			doc:id="2e98effd-3407-48ba-99fa-8e63469a472e"
+			config-ref="File_Config"
+			directory="${file.source.path}"
+			recursive="false"
+			autoDelete="true"
+			outputMimeType='application/csv; ignoreemptyline=true; header=true; headerlinenumber=0'>
+			<scheduling-strategy>
+				<fixed-frequency />
+			</scheduling-strategy>
+			<file:matcher
+				filenamePattern="${file.source.file.pattern}" />
+		</file:listener>
+		<logger
+			level="INFO"
+			doc:name="Start"
+			doc:id="54937d96-d237-4de5-ab1a-6926e0eb6b05"
+			message="File processing start" />
+		<flow-ref
+			doc:name="file-processing-flowref"
+			doc:id="76fe2a90-3a72-4ea8-abf9-a75ba53b35e6"
+			name="file-processing" />
+		<logger
+			level="INFO"
+			doc:name="End"
+			doc:id="4cad16b7-364c-4b86-9e87-1eea3880854b"
+			message="File processing completed" />
+	</flow>
+	<sub-flow
+		name="file-processing"
+		doc:id="5b6c48f7-b39f-4eb0-83bb-f32c7943f0f0">
+		<ee:transform
+			doc:name="Processing Employee Info"
+			doc:id="6bcfe100-aa66-4c8f-83a6-f50db113304e">
+			<ee:message>
+				<ee:set-payload
+					resource="dataweave/empProcessing.dwl" />
+			</ee:message>
+		</ee:transform>
+		<parallel-foreach
+			doc:name="Parallel For Each"
+			doc:id="69981d74-0558-4798-9e2f-f0cd354efdf8"
+			collection="#[payload]"
+			maxConcurrency="5">
+			<set-variable
+				value="#[(keysOf(payload)[0])]"
+				doc:name="Set deptId"
+				doc:id="57507478-ab37-4f5c-8e2c-610dbee667d2"
+				variableName="deptId" />
+			<logger
+				level="INFO"
+				doc:name="Logger"
+				doc:id="f7891597-103c-42a7-a478-80e578a8425c"
+				message='#["Start Processing for Department Id : " ++ (vars.deptId)]' />
+			<ee:transform
+				doc:name="Set out file"
+				doc:id="fe1791c3-bb33-42db-baeb-ff854a12d32a">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/csv ignoreEmptyLine=true, header=false
+---
+payload[0]]]></ee:set-payload>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="outFilePath"><![CDATA[Mule::p('file.destination.path') ++ "\\department-" ++ vars.deptId ++ ".csv"]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref
+				doc:name="file-out-flowref"
+				doc:id="164901e4-41c8-49b9-9aaa-703b8811e8fb"
+				name="file-out" />
+			<logger
+				level="INFO"
+				doc:name="Logger"
+				doc:id="7696d9a0-3146-4808-b1a7-7f3f238ca7bc"
+				message='#["End Processing for Department Id : " ++ (vars.deptId)]' />
+		</parallel-foreach>
+	</sub-flow>
+	<sub-flow
+		name="file-out"
+		doc:id="e04a4a7c-4ce4-4eb2-80b1-f76bdabf0434">
+		<file:write
+			doc:name="File Out"
+			doc:id="d2cf3b80-d290-443d-9a26-82114401e51a"
+			config-ref="File_Config"
+			mode="APPEND"
+			path="#[vars.outFilePath]">
+		</file:write>
+	</sub-flow>
+</mule>
